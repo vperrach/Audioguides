@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nikko Sacred Audio Guide</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Leaflet OpenStreetMap CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        /* Custom pulse glow */
+        .pulse-glow {
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+        }
+        .torii-red {
+            color: #ef4444;
+        }
+        .bg-torii-red {
+            background-color: #dc2626;
+        }
+        /* Map Custom Styling */
+        .leaflet-popup-content-wrapper {
+            background: #0f172a;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            border-radius: 12px;
+        }
+        .leaflet-popup-tip {
+            background: #0f172a;
+        }
+        /* Pulse for User Location Pin */
+        .user-location-pulse {
+            width: 14px;
+            height: 14px;
+            background-color: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+            animation: pulse-blue 2s infinite;
+        }
+        @keyframes pulse-blue {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased selection:bg-red-500 selection:text-white">
+
+    <!-- Header / Navbar -->
+    <header class="bg-slate-950/80 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-700 to-amber-600 flex items-center justify-center text-white shadow-lg">
+                <i data-lucide="compass" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-wide text-amber-100 flex items-center gap-2">
+                    Nikko Audio Guide
+                    <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 border border-red-700/50">GPS & Preload</span>
+                </h1>
+                <p class="text-xs text-slate-400">Sacred Shrines & Temples of Nikko</p>
+            </div>
+        </div>
+
+        <!-- Controls / Search Bar & GPS Toggle -->
+        <div class="flex items-center gap-2">
+            <button id="toggleGpsBtn" class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-slate-300 hover:text-amber-400 hover:border-amber-500/50 flex items-center gap-1.5 transition-all">
+                <i data-lucide="navigation" class="w-3.5 h-3.5 text-slate-400" id="gpsIcon"></i>
+                <span id="gpsStatusText" class="hidden sm:inline">Enable GPS</span>
+            </button>
+            <button id="demoLocationBtn" onclick="simulateLocationNearCurrentTrack()" class="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-amber-400 hover:bg-slate-800 flex items-center gap-1" title="Simulate arriving at current track coordinates">
+                <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i>
+                <span class="hidden md:inline">Simulate GPS Arrival</span>
+            </button>
+            <div class="relative hidden lg:block w-52">
+                <input type="text" id="searchInput" placeholder="Search guide content..." 
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors">
+                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500"></i>
+            </div>
+            <button id="bookmarksToggleBtn" class="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-amber-400 hover:border-amber-500/50 transition-all relative">
+                <i data-lucide="bookmark" class="w-4 h-4"></i>
+                <span id="bookmarkBadge" class="hidden absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold flex items-center justify-center">0</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- iOS Safari Audio Permission Unlock Banner -->
+    <div id="iosAudioUnlockBanner" class="bg-amber-500/20 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 z-20">
+        <span class="flex items-center gap-2">
+            <i data-lucide="volume-2" class="w-4 h-4 text-amber-400 shrink-0"></i>
+            Tap to enable background voice playback & location audio triggers on iOS.
+        </span>
+        <button onclick="unlockIOSAudio()" class="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors shrink-0">
+            Enable Audio
+        </button>
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar Navigation (Desktop Stops List) -->
+        <aside class="w-80 bg-slate-950/50 border-r border-slate-800/80 flex-col hidden md:flex">
+            <div class="p-3 border-b border-slate-800/60 text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Itinerary Stops</span>
+                <span id="stopCount" class="text-amber-500 font-bold">8 Stops</span>
+            </div>
+            <div id="stopsNavigation" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- Dynamic Stop Buttons populated via JS -->
+            </div>
+        </aside>
+
+        <!-- Center Interactive Viewer -->
+        <main class="flex-1 flex flex-col bg-slate-900 overflow-hidden relative">
+
+            <!-- Mobile Search Bar (Only visible on mobile) -->
+            <div class="p-3 bg-slate-950/40 border-b border-slate-800 sm:hidden">
+                <div class="relative w-full">
+                    <input type="text" id="searchInputMobile" placeholder="Search guide content..." 
+                           class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                    <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500"></i>
+                </div>
+            </div>
+
+            <!-- Mobile Stops Ribbon Selector -->
+            <div class="p-2 bg-slate-950/60 border-b border-slate-800 flex items-center space-x-2 overflow-x-auto md:hidden text-xs">
+                <div id="mobileStopsRibbon" class="flex space-x-2">
+                    <!-- Dynamic Mobile Stops -->
+                </div>
+            </div>
+
+            <!-- Active Audio / Content View -->
+            <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" id="contentViewer">
+                <!-- Dynamic Active Track Banner & Text Card -->
+            </div>
+
+            <!-- Audio Controller Bar (Sticky Bottom) -->
+            <div class="bg-slate-950 border-t border-slate-800/90 p-3 md:p-4 flex flex-col gap-3 shadow-2xl z-20">
+                <!-- Track Progress Bar -->
+                <div class="flex items-center gap-3">
+                    <span id="currentTimeDisplay" class="text-[11px] font-mono text-slate-400 w-10 text-right">0:00</span>
+                    <input type="range" id="audioProgress" min="0" max="100" value="0" 
+                           class="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400">
+                    <span id="totalTimeDisplay" class="text-[11px] font-mono text-slate-400 w-10">0:00</span>
+                </div>
+
+                <!-- Main Player Controls -->
+                <div class="flex items-center justify-between gap-2">
+                    <!-- Left: Current Playing Info -->
+                    <div class="flex items-center gap-3 min-w-0 w-1/3">
+                        <div id="playerThumbnail" class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-amber-400 relative">
+                            <i data-lucide="disc" class="w-5 h-5 animate-spin-slow"></i>
+                            <span id="preloadStatusBadge" class="absolute -bottom-1 -right-1 w-3 h-3 bg-slate-600 border border-slate-950 rounded-full" title="Preload Status"></span>
+                        </div>
+                        <div class="min-w-0">
+                            <h4 id="playerTrackTitle" class="text-xs md:text-sm font-semibold text-slate-100 truncate">Select a Track</h4>
+                            <p id="playerStopTitle" class="text-[11px] text-slate-400 truncate">Nikko Audioguide</p>
+                        </div>
+                    </div>
+
+                    <!-- Center: Play/Pause/Prev/Next -->
+                    <div class="flex items-center gap-2 md:gap-4 justify-center">
+                        <button id="prevBtn" class="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
+                            <i data-lucide="skip-back" class="w-5 h-5"></i>
+                        </button>
+                        <button id="playPauseBtn" class="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-600 to-red-600 text-white flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all">
+                            <i data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>
+                        </button>
+                        <button id="nextBtn" class="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
+                            <i data-lucide="skip-forward" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Right: Speech Settings -->
+                    <div class="flex items-center justify-end gap-2 w-1/3">
+                        <button id="speedBtn" class="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-[11px] font-mono text-amber-400 hover:bg-slate-800">
+                            1.0x
+                        </button>
+                        <select id="voiceSelect" class="hidden lg:block max-w-[130px] bg-slate-900 border border-slate-800 text-[11px] text-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-500 truncate">
+                            <option value="Zephyr">Zephyr (Bright)</option>
+                            <option value="Puck">Puck (Upbeat)</option>
+                            <option value="Kore" selected>Kore (Firm)</option>
+                            <option value="Fenrir">Fenrir (Excitable)</option>
+                            <option value="Aoede">Aoede (Breezy)</option>
+                            <option value="Sulafat">Sulafat (Warm)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Map Modal / Interactive Directions Drawer -->
+    <div id="mapModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div class="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="map-pin" class="w-5 h-5 text-red-500"></i>
+                    <h3 id="mapModalTitle" class="text-base font-bold text-amber-100">Nikko Itinerary Map</h3>
+                </div>
+                <button id="closeMapBtn" class="p-1 text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="mapContainer" class="flex-1 w-full relative"></div>
+            <div class="p-3 bg-slate-950 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
+                <span id="routeDistanceInfo">Calculated GPS route between stations</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-500 hidden sm:inline">Tip: Tap anywhere on map to set location pin</span>
+                    <span class="text-amber-400 font-medium">Walking Route</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bookmark Modal -->
+    <div id="bookmarkModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex justify-end">
+        <div class="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full p-6 flex flex-col">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <h3 class="text-base font-bold text-amber-100 flex items-center gap-2">
+                    <i data-lucide="bookmark" class="w-5 h-5 text-amber-500"></i>
+                    Saved Audio Tracks
+                </h3>
+                <button id="closeBookmarkBtn" class="p-1 text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="bookmarkList" class="flex-1 overflow-y-auto py-4 space-y-3">
+                <!-- Bookmarked tracks inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // Data Structure Extracted from Nikko Audioguide PDF with Fine-Grained Sub-Track GPS Coordinates
+        const guideData = [
+            {
+                stopId: "stop-1",
+                stopNumber: "Stop 1",
+                stopTitle: "Shinkyo Bridge",
+                badge: "Entrance",
+                icon: "land-plot",
+                lat: 36.7533,
+                lng: 139.6042,
+                tracks: [
+                    {
+                        id: "track-1-1",
+                        number: "Track 1.1",
+                        title: "The bridge of snakes",
+                        lat: 36.7533,
+                        lng: 139.6042,
+                        content: `Welcome to Nikko. Before you is Shinkyo, the Sacred Bridge, marking the entrance to the holy precinct. To understand it, go back to the 8th century. A Buddhist monk, Shodo Shonin, wanted to reach the sacred mountains. But the Daiya River was raging below him, and there was no way across. So he prayed. On the far bank appeared a fearsome-looking deity, Jinja-Daio, holding two snakes. He sent them across the water, and they became a bridge. Sedge grasses sprouted on their backs so that the monk could walk over without slipping. That is why an old name evokes a snake bridge covered in mountain sedge. Some tellings add that one snake was red and the other blue. Once the monk had crossed, the story goes, god and bridge vanished.`
+                    },
+                    {
+                        id: "track-1-2",
+                        number: "Track 1.2",
+                        title: "The bridge you see",
+                        lat: 36.7534,
+                        lng: 139.6044,
+                        content: `The elegant vermilion form dates from 1636. That was the time of a great rebuilding of Toshogu, which you will visit shortly, under the third shogun, Iemitsu. Remember his name. You will meet him again at the end of the morning. This was no ordinary crossing. In the Edo period it was reserved for special people and occasions, while others used another way across. In 1902 a violent flood swept the bridge away. It was rebuilt in 1904, and the public has been able to walk on it since 1973. Look now: follow the curve of the red deck and see how it contrasts with the dark river and forest. You are about to leave the everyday town and enter the mountain of the gods.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-2",
+                stopNumber: "Stop 2",
+                stopTitle: "Rinnoji, Sanbutsudo",
+                badge: "Temple",
+                note: "Buy your Sanbutsudo + Taiyuin ticket here.",
+                icon: "building-2",
+                lat: 36.7544,
+                lng: 139.6001,
+                tracks: [
+                    {
+                        id: "track-2-1",
+                        number: "Track 2.1",
+                        title: "The monk who opened the mountain",
+                        lat: 36.7542,
+                        lng: 139.6003,
+                        content: `Shodo Shonin, the monk from the bridge story, is considered the founder of sacred Nikko. His temple beginnings here go back more than 1,200 years. For centuries, worship in Nikko blended Buddhism with the native worship of the gods, today called Shinto. Mountains were sacred, and a god of a mountain could also be understood as a form of a Buddha or bodhisattva. In the 19th century, the new Meiji government ordered the two religions apart. That is why you now visit one temple, Rinnoji, and two shrines, Toshogu and Futarasan, as separate places with separate tickets.`
+                    },
+                    {
+                        id: "track-2-2",
+                        number: "Track 2.2",
+                        title: "The hall of the three Buddhas",
+                        lat: 36.7544,
+                        lng: 139.6001,
+                        content: `Sanbutsudo means Hall of the Three Buddhas. It is Rinnoji's main hall and the largest hall on the Nikko mountain. The present building belongs to the great building age of the early 17th century. A long restoration of about ten years was completed around 2019.`
+                    },
+                    {
+                        id: "track-2-3",
+                        number: "Track 2.3",
+                        title: "Three statues, three mountains",
+                        lat: 36.7545,
+                        lng: 139.6000,
+                        content: `Look up at the three large gilded wooden figures. Each is linked to a mountain and its god.
+Thousand-Armed Kannon: Mount Nantai. Kannon embodies compassion, and the many arms express the power to help many beings at once.
+Amida Buddha: Mount Nyoho. Amida is associated with rebirth in the Western Pure Land.
+Horse-Headed Kannon: Mount Taro. Look for the small horse head above the face. This form is often seen as a protector of animals.
+The three mountains are often pictured as a family: Nantai the father, Nyoho the mother and Taro the child. So you are looking at three Buddhist figures and, at the same time, at the landscape around you. Take a quiet moment below them and compare their hands.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-3",
+                stopNumber: "Stop 3",
+                stopTitle: "Toshogu",
+                badge: "World Heritage",
+                note: "This is the long stop. Play each track when you reach the spot.",
+                icon: "crown",
+                lat: 36.7581,
+                lng: 139.5989,
+                tracks: [
+                    {
+                        id: "track-3-1",
+                        number: "Track 3.1",
+                        title: "The man who became a god (at the stone torii)",
+                        lat: 36.7576,
+                        lng: 139.5992,
+                        content: `Toshogu is dedicated to Tokugawa Ieyasu. After generations of civil war, he came out on top and became shogun in 1603. His family ruled Japan for more than 250 years. Ieyasu died in 1616. He had left instructions that he should be enshrined at Nikko, almost due north of his capital, Edo, today's Tokyo. From there he would watch over the peace of the country. He was deified as Tosho Daigongen, the Great Avatar Illuminating the East. The first shrine, completed in 1617 under his son Hidetada, was more modest. What you see mostly comes from the rebuilding ordered by his grandson Iemitsu, who revered him. It was completed in 1636, in only about a year and five months. City records count some 4.5 million working days. It was devotion, and also a display of Tokugawa power.`
+                    },
+                    {
+                        id: "track-3-2",
+                        number: "Track 3.2",
+                        title: "The five-story pagoda",
+                        lat: 36.7578,
+                        lng: 139.5990,
+                        content: `A pagoda is a Buddhist form, here at a Shinto shrine: a reminder that the two faiths lived together. Look around the first level for the twelve animals of the zodiac. Now think about earthquakes. Inside is a central column that hangs from above and does not rest on the ground, leaving a gap of about 10 cm. This design is associated with stability and with allowing for the wood's movement over time.`
+                    },
+                    {
+                        id: "track-3-3",
+                        number: "Track 3.3",
+                        title: "Elephants from imagination",
+                        lat: 36.7580,
+                        lng: 139.5989,
+                        content: `Beyond the Omotemon gate are three sacred storehouses, used for items linked to the shrine's festivals. On the gable of the upper storehouse, find two elephants. Their design is credited to the painter Kano Tanyu, who had never seen a live elephant. He worked from what he had learned about them. Check the ears, tails and fur. How well did he do?`
+                    },
+                    {
+                        id: "track-3-4",
+                        number: "Track 3.4",
+                        title: "The three monkeys (sacred stable)",
+                        lat: 36.7581,
+                        lng: 139.5987,
+                        content: `This plain wooden building houses the stable for the shrine's sacred horse. Monkeys were traditionally considered protectors of horses. The eight carved panels tell the story of a human life, from childhood to adulthood and parenthood. The famous trio, who see no evil, speak no evil and hear no evil, represents childhood: a time to protect the young from bad influences. Start at the first panel and read the story in order.`
+                    },
+                    {
+                        id: "track-3-5",
+                        number: "Track 3.5",
+                        title: "Yomeimon, the gate you can watch until dusk",
+                        lat: 36.7583,
+                        lng: 139.5988,
+                        content: `Stop before climbing through. This National Treasure is about 11 m high and carries 508 carvings, with more than 240,000 pieces of gold leaf. Find dragons and other mythical beasts, Chinese sages and playing children. Children at play suggest a world at peace. Its nickname, Higurashi-no-mon, means you could look at it until the sun goes down. You, sadly, have a bus to catch.
+Now the famous anecdote. One of the twelve pillars has its pattern upside down. A traditional explanation says that anything perfect begins to decline, so the builders left the gate deliberately incomplete. Compare the patterns carefully. A restoration using traditional techniques was completed in 2017.`
+                    },
+                    {
+                        id: "track-3-6",
+                        number: "Track 3.6",
+                        title: "The main shrine",
+                        lat: 36.7585,
+                        lng: 139.5989,
+                        content: `Beyond the Chinese-style Karamon, with its fine pale decoration, lies the heart of the shrine. The worship hall and main sanctuary are linked by a stone-floored room. You will take off your shoes. This is an active place of worship, so keep your voice low and follow the signs about photographs.`
+                    },
+                    {
+                        id: "track-3-7",
+                        number: "Track 3.7",
+                        title: "The sleeping cat",
+                        lat: 36.7586,
+                        lng: 139.5991,
+                        content: `Above the passage toward the tomb is a very small cat, dozing among peonies. It is attributed to Hidari Jingoro, a legendary carver whose name is attached to many works in Japan. After passing through, look at the other side: sparrows. A popular reading is that when the cat sleeps, sparrows can play safely, an image of the Tokugawa peace. From another angle, some visitors think the cat looks ready to pounce. What do you think?`
+                    },
+                    {
+                        id: "track-3-8",
+                        number: "Track 3.8",
+                        title: "Climbing to Ieyasu",
+                        lat: 36.7589,
+                        lng: 139.5994,
+                        content: `The stone stairs rise through tall cedars to the inner shrine. The colour and noise fall away. At the top, a bronze monument in the form of a small tower marks Ieyasu's tomb. After all that gold, its restraint is striking. Here lies the centre of everything you saw below.`
+                    },
+                    {
+                        id: "track-3-9",
+                        number: "Track 3.9",
+                        title: "The crying dragon (Yakushido, or Honjido)",
+                        lat: 36.7582,
+                        lng: 139.5985,
+                        content: `This hall honours Yakushi, the Medicine Buddha, regarded as the Buddhist counterpart of the deified Ieyasu. It belongs to Rinnoji although it stands in Toshogu's grounds. Sources differ on whether entry costs extra, so check at the entrance.
+Look up at the huge dragon. When wooden clappers are struck right below its head, the sound echoes between ceiling and floor in a ringing flutter, heard as the dragon's cry. Move away from that spot and the effect changes. One account says it was discovered by chance in 1905, when someone clapped to chase away pigeons. The original hall and its dragon burned in 1961. Acoustic researchers studied a scale model to help recreate the effect, and the painter Katayama Nanpu made the new dragon.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-4",
+                stopNumber: "Stop 4",
+                stopTitle: "Futarasan Shrine",
+                badge: "Ancient Shrine",
+                icon: "sparkles",
+                lat: 36.7589,
+                lng: 139.5962,
+                tracks: [
+                    {
+                        id: "track-4-1",
+                        number: "Track 4.1",
+                        title: "The shrine of the mountains",
+                        lat: 36.7589,
+                        lng: 139.5962,
+                        content: `After Toshogu, let your eyes rest. Futarasan is far older in its origins: its foundation is linked to Shodo Shonin in the 8th century, more than 800 years before Ieyasu was enshrined next door.
+It honours the gods of Nikko's three sacred mountains, the same family you met at Rinnoji: Nantai, Nyoho and Taro. There the focus was on their Buddhist forms; here it is on the Shinto gods. The shrine's reach goes well beyond these buildings. It includes the Shinkyo bridge you saw this morning, a middle shrine by Lake Chuzenji, where you are heading this afternoon, and an inner shrine on the summit of Mount Nantai. Think of today as a journey from the foot of a sacred mountain toward its heart.`
+                    },
+                    {
+                        id: "track-4-2",
+                        number: "Track 4.2",
+                        title: "The ghost lantern (paid garden)",
+                        lat: 36.7591,
+                        lng: 139.5965,
+                        content: `Find the six-sided bronze lantern. Its inscription dates it to 1292, when a local warrior, Kanuma Katsutsuna, donated it. It is therefore much older than the present shrine buildings around it.
+Imagine this place at night, without electric light. The flame took on a strange, ghostly appearance, and the lantern became known as Bakedoro. Samurai guarding the grounds mistook it for a spirit and attacked it with their swords. About seventy small cuts are said to mark it. Look closely, without touching, and see how many you can find.`
+                    },
+                    {
+                        id: "track-4-3",
+                        number: "Track 4.3",
+                        title: "The garden and its water",
+                        lat: 36.7590,
+                        lng: 139.5960,
+                        content: `While you are in the garden, look for the sacred spring. In Shinto, clean water is closely tied to purification, and mountain water is a gift of the gods. Take a moment to listen. Compare this quiet link with nature with the carved and gilded world of Toshogu.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-5",
+                stopNumber: "Stop 5",
+                stopTitle: "Taiyuin",
+                badge: "Mausoleum",
+                icon: "shield",
+                lat: 36.7578,
+                lng: 139.5947,
+                tracks: [
+                    {
+                        id: "track-5-1",
+                        number: "Track 5.1",
+                        title: "The grandson",
+                        lat: 36.7576,
+                        lng: 139.5950,
+                        content: `Remember Iemitsu, who rebuilt the bridge and Toshogu? This is his mausoleum. He was the third Tokugawa shogun and lived from 1604 to 1651. Under him, the shogunate tightened its control over the feudal lords and greatly restricted contact with the outside world.
+He revered his grandfather and wanted to rest near him, but not to outshine him. Taiyuin was completed in 1653, under his son. Where Toshogu shines in white and gold, here the mood is black and gold. It is still magnificent, just quieter.`
+                    },
+                    {
+                        id: "track-5-2",
+                        number: "Track 5.2",
+                        title: "The guardians at the gates",
+                        lat: 36.7577,
+                        lng: 139.5948,
+                        content: `You climb toward the shogun through a series of gates, each taking you further from the ordinary world. At the Niomon, two muscular guardians keep out evil. One traditionally has an open mouth and the other a closed one: the first and last sounds, a beginning and an end. At the Nitenmon, two more heavenly protectors take over. Before going through, look back and forth between the two gates and notice how the approach builds.`
+                    },
+                    {
+                        id: "track-5-3",
+                        number: "Track 5.3",
+                        title: "Yashamon",
+                        lat: 36.7578,
+                        lng: 139.5946,
+                        content: `Near the top is the Yashamon, named for its four Yasha, fierce spirits turned protectors. Each has its own colour. Compare their faces and poses. Then turn around and take in the roofs, lanterns and cedars.`
+                    },
+                    {
+                        id: "track-5-4",
+                        number: "Track 5.4",
+                        title: "The main hall, and the direction it faces",
+                        lat: 36.7579,
+                        lng: 139.5945,
+                        content: `Inside the hall, gilding and lacquer create a deep golden glow. Shoes off, and follow the photo rules.
+Here is the detail to remember. Buildings like this would usually face south. This one faces northeast, toward Toshogu, in honour of Iemitsu's grandfather. The Buddhist statue venerated in the main hall still faces south. The architecture itself expresses Iemitsu's devotion.`
+                    },
+                    {
+                        id: "track-5-5",
+                        number: "Track 5.5",
+                        title: "Kokamon, the last gate",
+                        lat: 36.7580,
+                        lng: 139.5943,
+                        content: `This gate has a strikingly different, Chinese-inspired look, with a white arched base. Its name was given by the emperor. Heavenly maidens are painted above the passage, a sign that you are at the edge of sacred space. Iemitsu's remains lie beyond it. You do not go through. End your visit to the shrines here, in silence, before heading to the bus.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-6",
+                stopNumber: "Stop 6",
+                stopTitle: "Kegon Falls",
+                badge: "Nature",
+                icon: "waves",
+                lat: 36.7382,
+                lng: 139.5021,
+                tracks: [
+                    {
+                        id: "track-6-1",
+                        number: "Track 6.1",
+                        title: "Born of a volcano (upper deck)",
+                        lat: 36.7383,
+                        lng: 139.5023,
+                        content: `You have climbed into Oku-Nikko, the highlands. The story begins about 20,000 years ago, when lava from Mount Nantai blocked the valley. Water collected behind it and formed Lake Chuzenji. Today that water escapes here, dropping 97 m into the gorge. It is widely counted among Japan's three great waterfalls.
+Shodo Shonin, our monk from the bridge, is thought to have discovered the falls in the 8th century. The name has a Buddhist root: this is one of five falls in the valley named after five divisions of the Buddha's teaching. Kegon refers to the Flower Garland teaching.`
+                    },
+                    {
+                        id: "track-6-2",
+                        number: "Track 6.2",
+                        title: "Down through the rock (elevator)",
+                        lat: 36.7381,
+                        lng: 139.5020,
+                        content: `The elevator, first opened in 1930, takes you about 100 m down through solid rock. Imagine digging that shaft with the technology of the time. At the bottom, a passage leads to the viewing platform, where you face the falls from near the basin. Feel the change in sound.`
+                    },
+                    {
+                        id: "track-6-3",
+                        number: "Track 6.3",
+                        title: "Reading the cliff",
+                        lat: 36.7380,
+                        lng: 139.5018,
+                        content: `Now look at the rock walls. Find the columns with five or six sides. These are columnar joints, cracks formed as lava slowly cooled and shrank. You are looking at the inside of an ancient lava flow.
+Then find the Juni-taki, the Twelve Falls: thin streams spilling from the rock below the lip of the main fall. In deep winter they usually freeze, typically from late January. Today you may or may not see some ice. Finally, follow one patch of white water with your eyes from top to bottom. It gives you a better sense of the height.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-7",
+                stopNumber: "Stop 7",
+                stopTitle: "Coffee break, ZEN Resort café",
+                badge: "Relaxation",
+                note: "Check that it's open today before walking over.",
+                icon: "coffee",
+                lat: 36.7371,
+                lng: 139.5034,
+                tracks: [
+                    {
+                        id: "track-7-1",
+                        number: "Track 7.1",
+                        title: "Tokyo's summer escape",
+                        lat: 36.7371,
+                        lng: 139.5034,
+                        content: `Warm your hands around your cup and picture this shore more than a century ago. From the late 19th century, foreign residents and diplomats came here to escape the fierce summer heat of Tokyo. Villas appeared around the lake, and an international summer resort grew.
+One key figure was the British diplomat Ernest Satow, a great lover of Japan. In 1896 he built a house on the southern shore as a summer retreat. It later served the British embassy for generations, and passed to Tochigi Prefecture in 2010. The former British and Italian embassy villas have been opened to visitors, but they are not part of today's route.
+Foreigners also helped make this area known for fishing, especially fly fishing. Here is a surprise: the lake originally had no fish. The great drop of Kegon blocked their way up. People introduced them, starting with char in 1873.`
+                    }
+                ]
+            },
+            {
+                stopId: "stop-8",
+                stopNumber: "Stop 8",
+                stopTitle: "Lake Chuzenji",
+                badge: "Highland Lake",
+                icon: "mountain-snow",
+                lat: 36.7358,
+                lng: 139.4972,
+                tracks: [
+                    {
+                        id: "track-8-1",
+                        number: "Track 8.1",
+                        title: "The lake in the sky",
+                        lat: 36.7360,
+                        lng: 139.4975,
+                        content: `You are about 1,269 m above sea level, beside one of Japan's highest large natural lakes. It is about 25 km around, and up to about 163 m deep. Its calm surface hides a violent birth: the volcanic eruption you heard about at the falls.`
+                    },
+                    {
+                        id: "track-8-2",
+                        number: "Track 8.2",
+                        title: "The sacred mountain",
+                        lat: 36.7358,
+                        lng: 139.4970,
+                        content: `Look for the great cone of Mount Nantai, if clouds and light allow. For centuries this was a place of religious training, and the mountain itself is sacred. Shodo Shonin is celebrated for reaching its summit in 782, after earlier attempts. Futarasan Shrine's inner sanctuary stands at the top, and its middle shrine sits by the lake. The large red torii belongs to that sacred landscape.
+Access was strictly controlled. Women, and even horses and cattle, were barred from the mountain until 1872.`
+                    },
+                    {
+                        id: "track-8-3",
+                        number: "Track 8.3",
+                        title: "Farewell",
+                        lat: 36.7355,
+                        lng: 139.4965,
+                        content: `Look back over your day. It began with a monk stopped by a river, and a bridge made of snakes. You saw three mountains turned into three golden Buddhas. You met a warlord who became a god, and a grandson who chose to remain, even in death, facing him with respect. You ended where much of the story starts: water, volcano and sacred mountain.
+Thank you for listening. Keep an eye on the time for your bus, and have a safe journey back.`
+                    }
+                ]
+            }
+        ];
+
+        // Flat Track Array for linear navigation
+        const allTracks = [];
+        guideData.forEach(stop => {
+            stop.tracks.forEach(track => {
+                allTracks.push({
+                    ...track,
+                    stopId: stop.stopId,
+                    stopNumber: stop.stopNumber,
+                    stopTitle: stop.stopTitle,
+                    badge: stop.badge,
+                    note: stop.note,
+                    lat: track.lat || stop.lat,
+                    lng: track.lng || stop.lng
+                });
+            });
+        });
+
+        // App State
+        let currentTrackIndex = 0;
+        let isPlaying = false;
+        let isLoadingAudio = false;
+        let playbackRate = 1.0;
+        let selectedVoice = "Kore";
+        let audioCache = new Map(); // Cache generated Blob URLs
+        let preloadingQueue = new Set(); // Tracks currently preloading
+        let audioElement = new Audio();
+        let bookmarks = new Set(JSON.parse(localStorage.getItem('nikko_bookmarks') || '[]'));
+        
+        // Leaflet Map & GPS state
+        let leafletMap = null;
+        let mapMarkers = [];
+        let routeLayer = null;
+        let userLocationMarker = null;
+        let userPosWatcher = null;
+        let userCoords = null;
+        let triggeredGeofences = new Set();
+        let activeRouteDestination = null;
+
+        // DOM Elements
+        const stopsNav = document.getElementById('stopsNavigation');
+        const mobileRibbon = document.getElementById('mobileStopsRibbon');
+        const contentViewer = document.getElementById('contentViewer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const speedBtn = document.getElementById('speedBtn');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const audioProgress = document.getElementById('audioProgress');
+        const currentTimeDisplay = document.getElementById('currentTimeDisplay');
+        const totalTimeDisplay = document.getElementById('totalTimeDisplay');
+        const playerTrackTitle = document.getElementById('playerTrackTitle');
+        const playerStopTitle = document.getElementById('playerStopTitle');
+        const searchInput = document.getElementById('searchInput');
+        const searchInputMobile = document.getElementById('searchInputMobile');
+        const bookmarksToggleBtn = document.getElementById('bookmarksToggleBtn');
+        const bookmarkModal = document.getElementById('bookmarkModal');
+        const closeBookmarkBtn = document.getElementById('closeBookmarkBtn');
+        const bookmarkList = document.getElementById('bookmarkList');
+        const bookmarkBadge = document.getElementById('bookmarkBadge');
+        const preloadStatusBadge = document.getElementById('preloadStatusBadge');
+        const mapModal = document.getElementById('mapModal');
+        const closeMapBtn = document.getElementById('closeMapBtn');
+        const toggleGpsBtn = document.getElementById('toggleGpsBtn');
+        const gpsStatusText = document.getElementById('gpsStatusText');
+
+        // Init App
+        window.onload = function() {
+            lucide.createIcons();
+
+            renderStopsList();
+            renderMobileRibbon();
+            loadTrack(0);
+            updateBookmarkBadge();
+
+            // Audio Element Events
+            audioElement.addEventListener('timeupdate', updateAudioProgress);
+            audioElement.addEventListener('ended', onAudioEnded);
+            audioElement.addEventListener('play', () => {
+                isPlaying = true;
+                updatePlayPauseUI();
+            });
+            audioElement.addEventListener('pause', () => {
+                isPlaying = false;
+                updatePlayPauseUI();
+            });
+
+            // Controls Listeners
+            playPauseBtn.addEventListener('click', togglePlayPause);
+            prevBtn.addEventListener('click', playPreviousTrack);
+            nextBtn.addEventListener('click', playNextTrack);
+            speedBtn.addEventListener('click', cyclePlaybackRate);
+            voiceSelect.addEventListener('change', changeVoice);
+            audioProgress.addEventListener('input', seekAudio);
+            
+            searchInput.addEventListener('input', handleSearch);
+            searchInputMobile.addEventListener('input', handleSearch);
+
+            bookmarksToggleBtn.addEventListener('click', () => bookmarkModal.classList.remove('hidden'));
+            closeBookmarkBtn.addEventListener('click', () => bookmarkModal.classList.add('hidden'));
+            closeMapBtn.addEventListener('click', () => mapModal.classList.add('hidden'));
+            toggleGpsBtn.addEventListener('click', toggleGPS);
+
+            // Shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    togglePlayPause();
+                } else if (e.code === 'ArrowRight') {
+                    playNextTrack();
+                } else if (e.code === 'ArrowLeft') {
+                    playPreviousTrack();
+                }
+            });
+        };
+
+        // Unlock iOS Safari Web Audio restrictions on first user tap
+        function unlockIOSAudio() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                ctx.resume();
+                audioElement.play().then(() => audioElement.pause()).catch(() => {});
+                document.getElementById('iosAudioUnlockBanner').style.display = 'none';
+                playChimeNotification();
+            } catch(e) {
+                console.log("iOS audio unlocked");
+                document.getElementById('iosAudioUnlockBanner').style.display = 'none';
+            }
+        }
+
+        // Preload Nearby Tracks (Current + Next)
+        function triggerSmartPreload(trackIndex) {
+            const tracksToPreload = [trackIndex, trackIndex + 1];
+            tracksToPreload.forEach(idx => {
+                if (idx >= 0 && idx < allTracks.length) {
+                    const track = allTracks[idx];
+                    const cacheKey = `${track.id}_${selectedVoice}`;
+                    if (!audioCache.has(cacheKey) && !preloadingQueue.has(cacheKey)) {
+                        preloadingQueue.add(cacheKey);
+                        updatePreloadIndicator();
+                        fetchGeminiAudio(track, selectedVoice)
+                            .then(() => {
+                                preloadingQueue.delete(cacheKey);
+                                updatePreloadIndicator();
+                            })
+                            .catch(err => {
+                                console.warn(`Background preload failed for ${track.id}:`, err);
+                                preloadingQueue.delete(cacheKey);
+                                updatePreloadIndicator();
+                            });
+                    }
+                }
+            });
+        }
+
+        function updatePreloadIndicator() {
+            const track = allTracks[currentTrackIndex];
+            const cacheKey = `${track.id}_${selectedVoice}`;
+            if (audioCache.has(cacheKey)) {
+                preloadStatusBadge.className = "absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border border-slate-950 rounded-full shadow";
+                preloadStatusBadge.title = "Audio preloaded and ready for instant playback";
+            } else if (preloadingQueue.has(cacheKey)) {
+                preloadStatusBadge.className = "absolute -bottom-1 -right-1 w-3 h-3 bg-amber-500 border border-slate-950 rounded-full animate-ping";
+                preloadStatusBadge.title = "Preloading audio track...";
+            } else {
+                preloadStatusBadge.className = "absolute -bottom-1 -right-1 w-3 h-3 bg-slate-600 border border-slate-950 rounded-full";
+                preloadStatusBadge.title = "Audio will load on demand";
+            }
+        }
+
+        // Navigation Sidebar Render
+        function renderStopsList(activeStopId = null) {
+            stopsNav.innerHTML = '';
+            guideData.forEach(stop => {
+                const isActive = activeStopId ? stop.stopId === activeStopId : false;
+                const stopDiv = document.createElement('div');
+                stopDiv.className = `p-3 rounded-xl border transition-all cursor-pointer ${
+                    isActive 
+                    ? 'bg-slate-900 border-amber-500/60 shadow-lg' 
+                    : 'bg-slate-950/30 border-slate-800/80 hover:bg-slate-900/60 hover:border-slate-700'
+                }`;
+
+                stopDiv.innerHTML = `
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">${stop.stopNumber}</span>
+                        <span class="text-[10px] text-slate-500">${stop.tracks.length} tracks</span>
+                    </div>
+                    <h3 class="text-sm font-medium text-slate-200">${stop.stopTitle}</h3>
+                    <div class="mt-2 space-y-1">
+                        ${stop.tracks.map(t => {
+                            const isCurrentTrack = allTracks[currentTrackIndex].id === t.id;
+                            const isCached = audioCache.has(`${t.id}_${selectedVoice}`);
+                            return `
+                                <button onclick="selectTrackById('${t.id}')" 
+                                        class="w-full text-left px-2 py-1 rounded text-xs flex items-center justify-between ${
+                                            isCurrentTrack 
+                                            ? 'bg-amber-500/20 text-amber-300 font-medium' 
+                                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                        }">
+                                    <span class="truncate">${t.number}. ${t.title}</span>
+                                    <span class="flex items-center gap-1">
+                                        ${isCached ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Preloaded"></span>' : ''}
+                                        ${isCurrentTrack && isPlaying ? '<i data-lucide="volume-2" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>' : ''}
+                                    </span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                stopsNav.appendChild(stopDiv);
+            });
+            lucide.createIcons();
+        }
+
+        function renderMobileRibbon() {
+            mobileRibbon.innerHTML = '';
+            guideData.forEach(stop => {
+                const currentTrack = allTracks[currentTrackIndex];
+                const isActive = currentTrack.stopId === stop.stopId;
+                const btn = document.createElement('button');
+                btn.className = `whitespace-nowrap px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                    isActive 
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50' 
+                    : 'bg-slate-900 border-slate-800 text-slate-400'
+                }`;
+                btn.innerText = `${stop.stopNumber}: ${stop.stopTitle}`;
+                btn.onclick = () => {
+                    const firstTrack = stop.tracks[0];
+                    if (firstTrack) selectTrackById(firstTrack.id);
+                };
+                mobileRibbon.appendChild(btn);
+            });
+        }
+
+        function selectTrackById(trackId) {
+            const index = allTracks.findIndex(t => t.id === trackId);
+            if (index !== -1) {
+                const wasPlaying = isPlaying;
+                stopAudio();
+                loadTrack(index);
+                if (wasPlaying) playAudio();
+            }
+        }
+
+        function loadTrack(index) {
+            currentTrackIndex = index;
+            const track = allTracks[currentTrackIndex];
+            const parentStop = guideData.find(s => s.stopId === track.stopId);
+
+            playerTrackTitle.innerText = `${track.number}: ${track.title}`;
+            playerStopTitle.innerText = `${track.stopNumber} - ${track.stopTitle}`;
+
+            const isBookmarked = bookmarks.has(track.id);
+            const currentStopIdx = guideData.findIndex(s => s.stopId === track.stopId);
+            const nextStop = guideData[currentStopIdx + 1];
+
+            contentViewer.innerHTML = `
+                <!-- Stop Header / Context Banner -->
+                <div class="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 relative overflow-hidden shadow-xl">
+                    <div class="absolute -right-10 -bottom-10 opacity-10 text-amber-500">
+                        <i data-lucide="${parentStop.icon || 'map-pin'}" class="w-48 h-48"></i>
+                    </div>
+                    <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-900/40 border border-red-700/50 text-red-300">
+                                    ${parentStop.stopNumber}
+                                </span>
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                                    ${parentStop.badge}
+                                </span>
+                            </div>
+                            <h2 class="text-2xl md:text-3xl font-bold text-slate-100">${parentStop.stopTitle}</h2>
+                            ${parentStop.note ? `<p class="text-xs text-amber-400 mt-1 flex items-center gap-1.5"><i data-lucide="info" class="w-3.5 h-3.5"></i> ${parentStop.note}</p>` : ''}
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="openDirectionsModal(${currentStopIdx})" 
+                                    class="px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all">
+                                <i data-lucide="navigation" class="w-4 h-4"></i>
+                                View Map & Walking Route
+                            </button>
+                            <button onclick="toggleBookmark('${track.id}')" 
+                                    class="px-3 py-2 rounded-xl border text-xs font-medium flex items-center gap-2 transition-all ${
+                                        isBookmarked 
+                                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' 
+                                        : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                                    }">
+                                <i data-lucide="bookmark" class="w-4 h-4 ${isBookmarked ? 'fill-current text-amber-400' : ''}"></i>
+                                ${isBookmarked ? 'Saved' : 'Save Track'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Chapter / Track Selector Grid -->
+                <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 shadow-md">
+                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i data-lucide="layers" class="w-4 h-4 text-amber-400"></i> Chapters in ${parentStop.stopTitle}</span>
+                        <span class="text-[11px] text-slate-500 font-normal">${parentStop.tracks.length} tracks available</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        ${parentStop.tracks.map(t => {
+                            const isCurrent = t.id === track.id;
+                            const isPreloaded = audioCache.has(`${t.id}_${selectedVoice}`);
+                            return `
+                                <button onclick="selectTrackById('${t.id}')" 
+                                        class="p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between ${
+                                            isCurrent 
+                                            ? 'bg-amber-500/20 border-amber-500/60 text-amber-200 ring-1 ring-amber-500/50' 
+                                            : 'bg-slate-900/80 border-slate-800/80 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
+                                        }">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isCurrent ? 'bg-amber-500/30 text-amber-300' : 'bg-slate-800 text-slate-400'}">${t.number}</span>
+                                        <span class="flex items-center gap-1">
+                                            ${isPreloaded ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Preloaded"></span>' : ''}
+                                            ${isCurrent && isPlaying ? '<i data-lucide="volume-2" class="w-3.5 h-3.5 text-amber-400"></i>' : ''}
+                                        </span>
+                                    </div>
+                                    <span class="text-xs font-semibold line-clamp-1">${t.title}</span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- Track Content Card -->
+                <div class="bg-slate-950/60 p-6 md:p-8 rounded-2xl border border-slate-800/80 shadow-lg space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-mono text-xs font-bold">
+                                ${track.number.replace('Track ', '')}
+                            </div>
+                            <div>
+                                <h3 class="text-lg md:text-xl font-bold text-slate-100">${track.title}</h3>
+                                <p class="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><i data-lucide="map-pin" class="w-3 h-3 text-red-400"></i> Geofenced Chapter Coordinates: ${track.lat.toFixed(4)}, ${track.lng.toFixed(4)}</p>
+                            </div>
+                        </div>
+                        <button onclick="togglePlayPause()" class="p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition-colors">
+                            <i data-lucide="${isPlaying ? 'pause' : 'volume-2'}" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Transcript Paragraphs -->
+                    <div id="transcriptText" class="text-slate-300 leading-relaxed space-y-4 text-base md:text-lg font-serif">
+                        ${track.content.split('\n').map(paragraph => `<p class="hover:text-white transition-colors">${paragraph}</p>`).join('')}
+                    </div>
+                </div>
+
+                <!-- Next Destination Navigation Card -->
+                ${nextStop ? `
+                    <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 flex items-center justify-between">
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Next Station</span>
+                            <h4 class="text-sm font-semibold text-slate-200">${nextStop.stopNumber}: ${nextStop.stopTitle}</h4>
+                        </div>
+                        <button onclick="openDirectionsModal(${currentStopIdx + 1})" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-amber-500/50 text-xs text-amber-400 flex items-center gap-1.5 transition-all">
+                            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+                            Directions to Next Stop
+                        </button>
+                    </div>
+                ` : ''}
+            `;
+
+            lucide.createIcons();
+            renderStopsList(track.stopId);
+            renderMobileRibbon();
+            triggerSmartPreload(currentTrackIndex);
+
+            currentTimeDisplay.innerText = "0:00";
+            totalTimeDisplay.innerText = "0:00";
+            audioProgress.value = 0;
+            audioElement.pause();
+            audioElement.src = "";
+        }
+
+        // Gemini TTS API Integration
+        async function fetchGeminiAudio(track, voiceName) {
+            const cacheKey = `${track.id}_${voiceName}`;
+            if (audioCache.has(cacheKey)) {
+                return audioCache.get(cacheKey);
+            }
+
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+            const speechPrompt = `Read the following audio guide text clearly and naturally for tourists: Title: ${track.title}. ${track.content}`;
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: speechPrompt }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: voiceName }
+                        }
+                    }
+                }
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Gemini TTS API error: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const part = result?.candidates?.[0]?.content?.parts?.[0];
+            const audioDataBase64 = part?.inlineData?.data;
+            const mimeType = part?.inlineData?.mimeType || "";
+
+            if (!audioDataBase64) {
+                throw new Error("No audio content returned from Gemini TTS API.");
+            }
+
+            const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+            const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+
+            const pcmBuffer = base64ToArrayBuffer(audioDataBase64);
+            const pcm16Data = new Int16Array(pcmBuffer);
+            const wavBlob = pcmToWav(pcm16Data, sampleRate);
+            const audioUrl = URL.createObjectURL(wavBlob);
+
+            audioCache.set(cacheKey, audioUrl);
+            return audioUrl;
+        }
+
+        async function playAudio() {
+            const track = allTracks[currentTrackIndex];
+            const cacheKey = `${track.id}_${selectedVoice}`;
+
+            try {
+                isLoadingAudio = true;
+                updatePlayPauseUI();
+
+                let audioUrl;
+                if (audioCache.has(cacheKey)) {
+                    audioUrl = audioCache.get(cacheKey);
+                } else {
+                    audioUrl = await fetchGeminiAudio(track, selectedVoice);
+                }
+
+                if (audioElement.src !== audioUrl) {
+                    audioElement.src = audioUrl;
+                    audioElement.playbackRate = playbackRate;
+                }
+
+                await audioElement.play();
+                isPlaying = true;
+            } catch (err) {
+                console.error("Audio playback error:", err);
+                alert("Could not load audio for this track. Please check network connection.");
+            } finally {
+                isLoadingAudio = false;
+                updatePlayPauseUI();
+                updatePreloadIndicator();
+            }
+        }
+
+        function togglePlayPause() {
+            if (isLoadingAudio) return;
+            if (isPlaying) {
+                audioElement.pause();
+                isPlaying = false;
+                updatePlayPauseUI();
+            } else {
+                playAudio();
+            }
+        }
+
+        function stopAudio() {
+            audioElement.pause();
+            isPlaying = false;
+            updatePlayPauseUI();
+        }
+
+        function playNextTrack() {
+            if (currentTrackIndex < allTracks.length - 1) {
+                const wasPlaying = isPlaying;
+                stopAudio();
+                loadTrack(currentTrackIndex + 1);
+                if (wasPlaying) playAudio();
+            }
+        }
+
+        function playPreviousTrack() {
+            if (currentTrackIndex > 0) {
+                const wasPlaying = isPlaying;
+                stopAudio();
+                loadTrack(currentTrackIndex - 1);
+                if (wasPlaying) playAudio();
+            }
+        }
+
+        function updatePlayPauseUI() {
+            prevBtn.disabled = currentTrackIndex === 0;
+            nextBtn.disabled = currentTrackIndex === allTracks.length - 1;
+
+            if (isLoadingAudio) {
+                playPauseBtn.innerHTML = `<i data-lucide="loader-2" class="w-6 h-6 animate-spin"></i>`;
+            } else if (isPlaying) {
+                playPauseBtn.innerHTML = `<i data-lucide="pause" class="w-6 h-6 fill-current"></i>`;
+            } else {
+                playPauseBtn.innerHTML = `<i data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>`;
+            }
+            lucide.createIcons();
+        }
+
+        function updateAudioProgress() {
+            if (!audioElement.duration) return;
+            const current = audioElement.currentTime;
+            const total = audioElement.duration;
+            audioProgress.value = (current / total) * 100;
+            currentTimeDisplay.innerText = formatTime(current);
+            totalTimeDisplay.innerText = formatTime(total);
+        }
+
+        function seekAudio() {
+            if (!audioElement.duration) return;
+            const seekTime = (audioProgress.value / 100) * audioElement.duration;
+            audioElement.currentTime = seekTime;
+        }
+
+        function cyclePlaybackRate() {
+            const rates = [1.0, 1.25, 1.5, 2.0];
+            let nextIndex = rates.indexOf(playbackRate) + 1;
+            if (nextIndex >= rates.length) nextIndex = 0;
+            playbackRate = rates[nextIndex];
+            speedBtn.innerText = `${playbackRate.toFixed(1)}x`;
+            audioElement.playbackRate = playbackRate;
+        }
+
+        function changeVoice() {
+            selectedVoice = voiceSelect.value;
+            if (isPlaying) {
+                playAudio();
+            } else {
+                triggerSmartPreload(currentTrackIndex);
+            }
+        }
+
+        function onAudioEnded() {
+            isPlaying = false;
+            updatePlayPauseUI();
+            if (currentTrackIndex < allTracks.length - 1) {
+                playNextTrack();
+            }
+        }
+
+        // Bookmark Logic
+        function toggleBookmark(trackId) {
+            if (bookmarks.has(trackId)) {
+                bookmarks.delete(trackId);
+            } else {
+                bookmarks.add(trackId);
+            }
+            localStorage.setItem('nikko_bookmarks', JSON.stringify(Array.from(bookmarks)));
+            updateBookmarkBadge();
+            renderBookmarkList();
+            loadTrack(currentTrackIndex);
+        }
+
+        function updateBookmarkBadge() {
+            if (bookmarks.size > 0) {
+                bookmarkBadge.classList.remove('hidden');
+                bookmarkBadge.innerText = bookmarks.size;
+            } else {
+                bookmarkBadge.classList.add('hidden');
+            }
+        }
+
+        function renderBookmarkList() {
+            bookmarkList.innerHTML = '';
+            if (bookmarks.size === 0) {
+                bookmarkList.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No saved tracks yet.</p>`;
+                return;
+            }
+            bookmarks.forEach(id => {
+                const track = allTracks.find(t => t.id === id);
+                if (!track) return;
+                const div = document.createElement('div');
+                div.className = "p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between";
+                div.innerHTML = `
+                    <div>
+                        <span class="text-[10px] text-amber-400 font-bold">${track.number}</span>
+                        <h4 class="text-xs font-semibold text-slate-200">${track.title}</h4>
+                        <p class="text-[10px] text-slate-400">${track.stopTitle}</p>
+                    </div>
+                    <button onclick="selectTrackById('${track.id}'); bookmarkModal.classList.add('hidden');" class="p-2 text-amber-400 hover:bg-slate-900 rounded-lg">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                    </button>
+                `;
+                bookmarkList.appendChild(div);
+            });
+            lucide.createIcons();
+        }
+
+        // Search Filter Logic
+        function handleSearch(e) {
+            const query = e.target.value.toLowerCase().trim();
+            if (!query) {
+                renderStopsList(allTracks[currentTrackIndex].stopId);
+                return;
+            }
+            const matchingTracks = allTracks.filter(t => 
+                t.title.toLowerCase().includes(query) || 
+                t.content.toLowerCase().includes(query) ||
+                t.stopTitle.toLowerCase().includes(query)
+            );
+
+            stopsNav.innerHTML = `<div class="text-xs text-slate-400 px-2 py-1 font-semibold">Found ${matchingTracks.length} tracks</div>`;
+            matchingTracks.forEach(t => {
+                const div = document.createElement('div');
+                div.className = "p-2 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:border-amber-500/50";
+                div.onclick = () => selectTrackById(t.id);
+                div.innerHTML = `
+                    <div class="text-[10px] text-amber-400 font-bold">${t.number} • ${t.stopTitle}</div>
+                    <div class="text-xs font-semibold text-slate-200">${t.title}</div>
+                `;
+                stopsNav.appendChild(div);
+            });
+        }
+
+        // Helper Audio & Math Converters
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcm16Data, sampleRate) {
+            const numChannels = 1;
+            const bytesPerSample = 2;
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = pcm16Data.length * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, 16, true); // Bits per sample
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataSize, true);
+
+            let offset = 44;
+            for (let i = 0; i < pcm16Data.length; i++, offset += 2) {
+                view.setInt16(offset, pcm16Data[i], true);
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function getDistanceMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c;
+        }
+
+        function playChimeNotification() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+                osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.3); // A5
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+            } catch(e) {}
+        }
+
+        // Leaflet Map & Directions Implementation with OSRM Walking Routes
+        async function openDirectionsModal(stopIndex = 0) {
+            mapModal.classList.remove('hidden');
+            const targetStop = guideData[stopIndex] || guideData[0];
+            activeRouteDestination = targetStop;
+            document.getElementById('mapModalTitle').innerText = `Walking Navigation to ${targetStop.stopNumber}: ${targetStop.stopTitle}`;
+
+            if (!leafletMap) {
+                leafletMap = L.map('mapContainer').setView([targetStop.lat, targetStop.lng], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(leafletMap);
+
+                // Allow user to click anywhere on map to manually set current position
+                leafletMap.on('click', function(e) {
+                    setUserLocation(e.latlng.lat, e.latlng.lng, "Manual Map Pin");
+                });
+            } else {
+                leafletMap.setView([targetStop.lat, targetStop.lng], 16);
+            }
+
+            // Clear old markers & route lines
+            mapMarkers.forEach(m => leafletMap.removeLayer(m));
+            mapMarkers = [];
+            if (routeLayer) {
+                leafletMap.removeLayer(routeLayer);
+                routeLayer = null;
+            }
+
+            // Add Markers for all stops & chapter tracks
+            guideData.forEach((stop, i) => {
+                const isSelected = i === stopIndex;
+
+                const markerIcon = L.divIcon({
+                    className: 'custom-map-pin',
+                    html: `<div style="background-color: ${isSelected ? '#ef4444' : '#d97706'}; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5);">${i + 1}</div>`
+                });
+
+                const marker = L.marker([stop.lat, stop.lng], { icon: markerIcon }).addTo(leafletMap);
+                marker.bindPopup(`
+                    <div style="font-size: 12px; font-weight: bold; color: #f8fafc;">${stop.stopNumber}: ${stop.stopTitle}</div>
+                    <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">${stop.tracks.length} chapters available</div>
+                    <div style="margin-top: 6px; display: flex; gap: 4px;">
+                        <button onclick="setUserLocation(${stop.lat}, ${stop.lng}, '${stop.stopTitle}');" 
+                                style="padding: 4px 6px; background: #2563eb; color: white; border-radius: 6px; font-size: 10px; border: none; cursor: pointer; flex: 1;">
+                            Set Pin Here
+                        </button>
+                        <button onclick="selectTrackById('${stop.tracks[0].id}'); document.getElementById('mapModal').classList.add('hidden');" 
+                                style="padding: 4px 6px; background: #dc2626; color: white; border-radius: 6px; font-size: 10px; border: none; cursor: pointer; flex: 1;">
+                            Play Stop
+                        </button>
+                    </div>
+                `);
+                mapMarkers.push(marker);
+            });
+
+            // Update user location pin if available
+            updateMapUserLocationPin();
+
+            // Calculate and display walking route if user coordinates exist
+            if (userCoords) {
+                await fetchAndDrawWalkingRoute(userCoords.latitude, userCoords.longitude, targetStop.lat, targetStop.lng);
+            } else {
+                document.getElementById('routeDistanceInfo').innerHTML = `<span class="text-amber-400 font-medium">Tip: Tap map to place position pin, or click "Simulate GPS Arrival".</span>`;
+            }
+
+            setTimeout(() => {
+                leafletMap.invalidateSize();
+            }, 250);
+        }
+
+        function setUserLocation(lat, lng, label = "Custom Position") {
+            userCoords = { latitude: lat, longitude: lng };
+            gpsStatusText.innerText = `Pin: ${label}`;
+            document.getElementById('gpsIcon').classList.add('text-emerald-400');
+            updateMapUserLocationPin();
+            checkChapterGeofences(lat, lng);
+
+            if (leafletMap && activeRouteDestination) {
+                fetchAndDrawWalkingRoute(lat, lng, activeRouteDestination.lat, activeRouteDestination.lng);
+            }
+        }
+
+        function updateMapUserLocationPin() {
+            if (!leafletMap || !userCoords) return;
+
+            if (userLocationMarker) {
+                userLocationMarker.setLatLng([userCoords.latitude, userCoords.longitude]);
+            } else {
+                const userIcon = L.divIcon({
+                    className: 'custom-user-pin',
+                    html: `<div class="user-location-pulse"></div>`,
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7]
+                });
+                userLocationMarker = L.marker([userCoords.latitude, userCoords.longitude], { icon: userIcon }).addTo(leafletMap);
+                userLocationMarker.bindPopup('<b style="color:#f8fafc;">Your Position Marker</b>');
+            }
+        }
+
+        async function fetchAndDrawWalkingRoute(startLat, startLng, endLat, endLng) {
+            try {
+                document.getElementById('routeDistanceInfo').innerText = "Calculating walking route...";
+                const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+                const response = await fetch(osrmUrl);
+                const data = await response.json();
+
+                if (data.routes && data.routes.length > 0) {
+                    const route = data.routes[0];
+                    const distanceKm = (route.distance / 1000).toFixed(2);
+                    const durationMins = Math.round(route.duration / 60);
+
+                    document.getElementById('routeDistanceInfo').innerHTML = `
+                        Walking Distance: <b class="text-amber-300">${distanceKm} km</b> (${durationMins} min walk)
+                    `;
+
+                    const coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                    
+                    if (routeLayer) leafletMap.removeLayer(routeLayer);
+                    
+                    routeLayer = L.polyline(coordinates, {
+                        color: '#3b82f6',
+                        weight: 5,
+                        opacity: 0.8,
+                        dashArray: '8, 8'
+                    }).addTo(leafletMap);
+
+                    leafletMap.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+                }
+            } catch (err) {
+                console.warn("Could not calculate OSRM route, falling back to straight line:", err);
+                const straightLine = [[startLat, startLng], [endLat, endLng]];
+                if (routeLayer) leafletMap.removeLayer(routeLayer);
+                routeLayer = L.polyline(straightLine, { color: '#3b82f6', weight: 4, dashArray: '6, 6' }).addTo(leafletMap);
+                document.getElementById('routeDistanceInfo').innerText = "Direct GPS line to station";
+            }
+        }
+
+        // Geolocation Tracking & Fine-Grained Chapter Detection
+        function toggleGPS() {
+            if (userPosWatcher) {
+                navigator.geolocation.clearWatch(userPosWatcher);
+                userPosWatcher = null;
+                gpsStatusText.innerText = "Enable GPS";
+                document.getElementById('gpsIcon').className = "w-3.5 h-3.5 text-slate-400";
+            } else {
+                if (!navigator.geolocation) {
+                    alert("Geolocation is not supported by your browser device.");
+                    return;
+                }
+
+                gpsStatusText.innerText = "Requesting GPS...";
+                document.getElementById('gpsIcon').className = "w-3.5 h-3.5 text-amber-400 animate-pulse";
+
+                userPosWatcher = navigator.geolocation.watchPosition(
+                    (position) => {
+                        userCoords = position.coords;
+                        gpsStatusText.innerText = "GPS Live";
+                        document.getElementById('gpsIcon').className = "w-3.5 h-3.5 text-emerald-400";
+                        updateMapUserLocationPin();
+                        checkChapterGeofences(userCoords.latitude, userCoords.longitude);
+
+                        if (leafletMap && activeRouteDestination) {
+                            fetchAndDrawWalkingRoute(userCoords.latitude, userCoords.longitude, activeRouteDestination.lat, activeRouteDestination.lng);
+                        }
+                    },
+                    (err) => {
+                        console.warn("GPS tracking error:", err);
+                        document.getElementById('gpsIcon').className = "w-3.5 h-3.5 text-red-400";
+                        if (err.code === err.PERMISSION_DENIED) {
+                            gpsStatusText.innerText = "GPS Permission Denied";
+                            alert("iOS / Browser location access is blocked. If running inside an iframe preview, export to HTML or save to iPhone Home Screen for full GPS support.");
+                        } else {
+                            gpsStatusText.innerText = "GPS Signal Low";
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
+                );
+            }
+        }
+
+        // Simulate GPS Arrival for demo / testing
+        function simulateLocationNearCurrentTrack() {
+            const track = allTracks[currentTrackIndex];
+            userCoords = {
+                latitude: track.lat,
+                longitude: track.lng
+            };
+            
+            updateMapUserLocationPin();
+            checkChapterGeofences(userCoords.latitude, userCoords.longitude);
+
+            if (leafletMap && activeRouteDestination) {
+                fetchAndDrawWalkingRoute(userCoords.latitude, userCoords.longitude, activeRouteDestination.lat, activeRouteDestination.lng);
+            }
+
+            gpsStatusText.innerText = `Simulated GPS (${track.number})`;
+            document.getElementById('gpsIcon').className = "w-3.5 h-3.5 text-emerald-400";
+        }
+
+        // Check if user has arrived at any specific sub-track / chapter spot (~30 meters radius)
+        function checkChapterGeofences(userLat, userLng) {
+            allTracks.forEach((track) => {
+                const distance = getDistanceMeters(userLat, userLng, track.lat, track.lng);
+                if (distance <= 30 && !triggeredGeofences.has(track.id)) {
+                    triggeredGeofences.add(track.id);
+                    playChimeNotification();
+
+                    selectTrackById(track.id);
+                    playAudio();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
